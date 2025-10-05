@@ -1,0 +1,20 @@
+# Use the official Node.js 16 image
+FROM node:16
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Build TypeScript code
+RUN npm run build
+
+# Use PORT environment variable for Azure
+ENV PORT=80
+
+EXPOSE 80
+
+# Start the app with production script
+CMD ["npm", "run", "start-prod"]
