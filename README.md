@@ -66,6 +66,8 @@ run the multi-container setup:
 docker-compose up -d
 ```
 
+NOTE: If the api starts before MongoDB is ready, you might need to restart the todo-api container because it won't be able to connect to the database initially.
+
 NOTE: If you don't install the dependencies for the todo-api, the container will not work because it needs some of the devDependencies to run properly but the dockerfile only installs production dependencies.
 
 ## Local Kubernetes Setup
@@ -81,6 +83,8 @@ bash kubernetes.deployment.sh
 ```
 
 All the services are port-forwarded to localhost, so we can access them via http://localhost:3000 for the todo-app and http://localhost:5000 for the todo-api. MongoDB is accessible at localhost:27017, for example using MongoDB Compass or any other MongoDB client.
+
+NOTE: If the api starts before MongoDB is ready, you might need to restart the todo-api container because it won't be able to connect to the database initially.
 
 To terminate all services:
 
