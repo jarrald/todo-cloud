@@ -1,0 +1,53 @@
+targetScope = 'resourceGroup'
+
+param location string = resourceGroup().location
+param cosmosLocation string = 'uksouth'
+param prefix string = 'todo'
+param aksVmSize string = 'Standard_B2s'
+param databaseName string = 'todosDB'
+
+@description('Grant AKS pull access to ACR (needs permission to create role assignments)')
+param attachAcr bool = true
+
+@description('Cosmos DB free tier, allowed once per subscription')
+param cosmosFreeTier bool = true
+
+@description('Use serverless Cosmos DB instead of provisioned throughput')
+param cosmosServerless bool = false
+
+var suffix = uniqueString(resourceGroup().id)
+
+module acr 'modules/acr.bicep' = {
+  name: 'acr'
+  params: {
+    name: '${prefix}acr${suffix}'
+    location: location
+  }
+}
+
+module aks 'modules/aks.bicep' = {
+  name: 'aks'
+  params: {
+    name: '${prefix}-aks'
+    location: location
+    vmSize: aksVmSize
+    acrName: acr.outputs.name
+    attachAcr: attachAcr
+  }
+}
+
+module cosmos 'modules/cosmos.bicep' = {
+  name: 'cosmos'
+  params: {
+    name: '${prefix}-cosmos-${suffix}'
+    location: cosmosLocation
+    databaseName: databaseName
+    enableFreeTier: cosmosFreeTier && !cosmosServerless
+    serverless: cosmosServerless
+  }
+}
+
+output acrName string = acr.outputs.name
+output acrLoginServer string = acr.outputs.loginServer
+output aksName string = aks.outputs.name
+output cosmosName string = cosmos.outputs.name
