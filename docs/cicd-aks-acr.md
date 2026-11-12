@@ -1,10 +1,10 @@
 # CI/CD demo: GitHub Actions -> ACR -> AKS (student account, minimal cost)
 
-Goal: the cheapest possible demo that works on an Azure for Students subscription.
+Goal: a low-cost demo that works on an Azure for Students subscription.
 
 - No service principal / Entra app registration (students usually cannot create them).
 - No MongoDB pod: the database is Azure Cosmos DB for MongoDB (free tier).
-- One tiny AKS node, free AKS control plane, ACR Basic.
+- Two small AKS nodes, free AKS control plane, ACR Basic.
 - Each service has its own workflow, triggered only by pushes to `main` in its folder.
 
 Credentials are stored as GitHub secrets (ACR admin user + AKS kubeconfig). This is less secure than OIDC
@@ -15,13 +15,14 @@ but needs no directory permissions, which is fine for a demo.
 | Resource                   | Choice                       | Cost                        |
 | -------------------------- | ---------------------------- | --------------------------- |
 | AKS control plane          | Free tier                    | $0                          |
-| AKS node                   | 1 x `Standard_B2s`           | ~ $30/month if left running |
+| AKS nodes                  | 2 x `Standard_B2s`           | ~ $60/month if left running |
 | ACR                        | Basic                        | ~ $5/month                  |
 | Cosmos DB for MongoDB (RU) | Free tier (1000 RU/s, 25 GB) | $0                          |
 | Public IPs                 | 2 x LoadBalancer             | ~ a few $/month             |
 
 **Delete everything when the demo is done:** `az group delete -n todo-rg --yes`.
 You can also pause the cluster between sessions: `az aks stop -g todo-rg -n todo-aks` (and `az aks start ...`).
+The node estimate is approximate; actual pricing varies by region. Set `AKS_NODE_COUNT=1` for a lower-cost demo.
 
 ## Prerequisites
 
@@ -73,6 +74,17 @@ its location does not change. Use a new `RG` if existing resources need to remai
 location setting does not move an existing Cosmos DB account.
 Settings can be overridden with environment variables, for example
 `LOCATION=northeurope COSMOS_LOCATION=uksouth AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh`.
+The default AKS node count is two (`AKS_NODE_COUNT=1` overrides it). Existing clusters do not change until you
+redeploy or scale the node pool manually:
+
+```bash
+az aks scale -g todo-rg -n todo-aks --nodepool-name system --node-count 2
+kubectl get nodes
+kubectl get pods -l app=todo-api -o wide
+```
+
+An additional node does not guarantee that replicas run on different nodes; existing pods are not automatically
+redistributed. Switching or scaling nodes can affect availability, and the extra VM consumes student credits.
 If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` when role
 assignments are not allowed, and `COSMOS_SERVERLESS=true` when the free tier is already used.
 After it finishes, continue with section 6 (first deploy).
@@ -97,8 +109,8 @@ az group create -n $RG -l $LOC
 # Container registry (admin user enabled so GitHub can push with a password)
 az acr create -g $RG -n $ACR --sku Basic --admin-enabled true
 
-# Cheapest AKS: free tier, 1 small node
-az aks create -g $RG -n $AKS --tier free --node-count 1 --node-vm-size Standard_B2s \
+# AKS: free tier, 2 small nodes
+az aks create -g $RG -n $AKS --tier free --node-count 2 --node-vm-size Standard_B2s \
   --generate-ssh-keys --attach-acr $ACR
 
 # Cosmos DB for MongoDB (free tier is allowed once per subscription)

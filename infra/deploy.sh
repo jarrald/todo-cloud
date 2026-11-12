@@ -5,7 +5,8 @@
 # Works on macOS, Linux, Windows (Git Bash / WSL) and Azure Cloud Shell.
 #
 # Optional overrides (environment variables), e.g.  LOCATION=northeurope bash infra/deploy.sh
-#   RG=todo-rg  LOCATION=norwayeast  COSMOS_LOCATION=uksouth  AKS_VM_SIZE=Standard_B2s  ATTACH_ACR=true
+#   RG=todo-rg  LOCATION=norwayeast  COSMOS_LOCATION=uksouth  AKS_VM_SIZE=Standard_B2s
+#   AKS_NODE_COUNT=2  ATTACH_ACR=true
 #   COSMOS_SERVERLESS=true|false (default: auto)  GITHUB_REPO=owner/repo (default: current repo)
 
 set -euo pipefail
@@ -15,6 +16,7 @@ RG="${RG:-todo-rg}"
 LOCATION="${LOCATION:-norwayeast}"
 COSMOS_LOCATION="${COSMOS_LOCATION:-uksouth}"
 AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s}"
+AKS_NODE_COUNT="${AKS_NODE_COUNT:-2}"
 ATTACH_ACR="${ATTACH_ACR:-true}"
 DB_NAME="todosDB"
 DEPLOYMENT="todo-infra"
@@ -54,11 +56,13 @@ fi
 COSMOS_FREE=$(echo "$COSMOS_FREE" | tr '[:upper:]' '[:lower:]')
 COSMOS_SERVERLESS=$(echo "$COSMOS_SERVERLESS" | tr '[:upper:]' '[:lower:]')
 echo "Locations: AKS/ACR=$LOCATION Cosmos DB=$COSMOS_LOCATION"
+echo "AKS: nodeCount=$AKS_NODE_COUNT vmSize=$AKS_VM_SIZE"
 echo "Cosmos DB: freeTier=$COSMOS_FREE serverless=$COSMOS_SERVERLESS"
 
 echo "Deploying Bicep template (this takes about 5-10 minutes)..."
 if ! az deployment group create -g "$RG" -n "$DEPLOYMENT" -f infra/main.bicep \
-  -p location="$LOCATION" cosmosLocation="$COSMOS_LOCATION" aksVmSize="$AKS_VM_SIZE" attachAcr="$ATTACH_ACR" \
+  -p location="$LOCATION" cosmosLocation="$COSMOS_LOCATION" aksVmSize="$AKS_VM_SIZE" \
+     aksNodeCount="$AKS_NODE_COUNT" attachAcr="$ATTACH_ACR" \
      cosmosFreeTier="$COSMOS_FREE" cosmosServerless="$COSMOS_SERVERLESS" -o none; then
   echo
   echo "Deployment failed. Common fixes:"

@@ -4,6 +4,8 @@ param location string = resourceGroup().location
 param cosmosLocation string = 'uksouth'
 param prefix string = 'todo'
 param aksVmSize string = 'Standard_B2s'
+@minValue(1)
+param aksNodeCount int = 2
 param databaseName string = 'todosDB'
 
 @description('Grant AKS pull access to ACR (needs permission to create role assignments)')
@@ -31,6 +33,7 @@ module aks 'modules/aks.bicep' = {
     name: '${prefix}-aks'
     location: location
     vmSize: aksVmSize
+    nodeCount: aksNodeCount
     acrName: acr.outputs.name
     attachAcr: attachAcr
   }

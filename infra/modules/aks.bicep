@@ -1,6 +1,8 @@
 param name string
 param location string
 param vmSize string
+@minValue(1)
+param nodeCount int
 param acrName string
 param attachAcr bool
 
@@ -24,7 +26,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-02-01' = {
       {
         name: 'system'
         mode: 'System'
-        count: 1
+        count: nodeCount
         vmSize: vmSize
         osType: 'Linux'
         osDiskSizeGB: 32
