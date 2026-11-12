@@ -5,7 +5,7 @@ Goal: a low-cost demo that works on an Azure for Students subscription.
 - No service principal / Entra app registration (students usually cannot create them).
 - No MongoDB pod: the database is Azure Cosmos DB for MongoDB (free tier).
 - Two small AKS nodes, free AKS control plane, ACR Basic.
-- Each service has its own workflow, triggered only by pushes to `main` in its folder.
+- Each service has its own workflow, triggered by relevant pushes to `main` or manually in GitHub Actions.
 
 Credentials are stored as GitHub secrets (ACR admin user + AKS kubeconfig). This is less secure than OIDC
 but needs no directory permissions, which is fine for a demo.
@@ -31,12 +31,13 @@ The node estimate is approximate; actual pricing varies by region. Set `AKS_NODE
 The scripts use command-line tools. The Azure extensions for VS Code are not needed and do not replace them.
 Run the commands in the VS Code integrated terminal (bash).
 
-| Tool | Needed for | Install |
-| --- | --- | --- |
-| Azure CLI (`az`) | everything in `infra/` | macOS: `brew install azure-cli`<br>Windows: `winget install -e --id Microsoft.AzureCLI`<br>Linux: <https://learn.microsoft.com/cli/azure/install-azure-cli-linux> |
-| `kubectl` | secrets and deployments in AKS | after installing `az`: `az aks install-cli` (or `brew install kubectl`) |
-| GitHub CLI (`gh`), optional | sets the GitHub secrets automatically | macOS: `brew install gh`<br>Windows: `winget install -e --id GitHub.cli`<br>then `gh auth login` |
-| Bash | running the scripts | built in on macOS/Linux; on Windows use Git Bash or WSL |
+| Tool                        | Needed for                            | Install                                                                                                                                                           |
+| --------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Azure CLI (`az`)            | everything in `infra/`                | macOS: `brew install azure-cli`<br>Windows: `winget install -e --id Microsoft.AzureCLI`<br>Linux: <https://learn.microsoft.com/cli/azure/install-azure-cli-linux> |
+| `kubectl`                   | secrets and deployments in AKS        | after installing `az`: `az aks install-cli` (or `brew install kubectl`)                                                                                           |
+| GitHub CLI (`gh`), optional | sets the GitHub secrets automatically | macOS: `brew install gh`<br>Windows: `winget install -e --id GitHub.cli`<br>then `gh auth login`                                                                  |
+| Git                         | clone and push the repository         | Windows: `winget install -e --id Git.Git`<br>Other platforms: <https://git-scm.com/install/>                                                                     |
+| Bash                        | running the scripts                   | built in on macOS/Linux; on Windows use Git Bash or WSL                                                                                                           |
 
 Check the installation and sign in. **After installing, close and reopen the terminal, or restart VS Code completely**
 (on Windows, sign out and in again if `az` is still not found). Terminals only pick up new tools at startup.
@@ -53,19 +54,34 @@ If several subscriptions are listed, choose the student one: `az account set --s
 `kubectl` and Bicep, and you are already logged in. Run `gh auth login` there if you want the GitHub secrets set
 automatically, then `git clone` the repo and run the scripts.
 
-## Quick start: infrastructure as code (Bicep + bash)
+## Automated setup: deploy and destroy scripts
 
-`infra/` creates everything in sections 1-4 below with one command:
+Run the following from the repository root in Bash. Install the tools in **Prerequisites** first. Git is also needed
+to clone the repository and push the manifests and workflows. Docker is not needed locally when using GitHub Actions.
+
+### 1. Sign in
 
 ```bash
 az login
-bash infra/deploy.sh          # macOS, Linux, Git Bash/WSL on Windows, or Azure Cloud Shell
+az account show             # check the subscription
+kubectl version --client    # check kubectl is installed
+gh auth login               # optional, for automatic GitHub configuration
 ```
 
-It registers the resource providers, deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS, Cosmos DB for MongoDB),
-creates the `mongo-secret` in the cluster, fills in the ACR name in `kubernetes-aks/`, and sets the GitHub secrets and
-variable with `gh` (if `gh` is installed and logged in, otherwise it prints what to set by hand).
-Requires `az` and `kubectl` (and optionally `gh`). Azure Cloud Shell has all three; run `gh auth login` there first.
+For `gh`, sign in to an account with permission to manage the target repository's Actions secrets and variables.
+If you skip it, the deploy script prints instructions to configure them manually.
+
+### 2. Deploy infrastructure
+
+```bash
+bash infra/deploy.sh
+```
+
+The script registers providers, deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS and Cosmos DB),
+creates the `mongo-secret` in AKS, replaces the `YOUR_ACR.azurecr.io` placeholder in the manifests, and sets
+GitHub repository secrets (`ACR_USERNAME`, `ACR_PASSWORD`, `KUBE_CONFIG`) and the `ACR_LOGIN_SERVER` variable
+when `gh` is installed and authenticated. If the manifests already contain a registry address, verify and update
+them manually: the script only replaces the placeholder. Do not commit credentials or kubeconfig.
 
 The default location is `norwayeast` for AKS and ACR, and `uksouth` for Cosmos DB. Available regions may differ for
 each Azure for Students subscription.
@@ -81,6 +97,7 @@ redeploy or scale the node pool manually:
 
 ```bash
 az aks scale -g todo-rg -n todo-aks --nodepool-name system --node-count 2
+kubectl config current-context  # confirm this is the AKS context
 kubectl get nodes
 kubectl get pods -l app=todo-api -o wide
 ```
@@ -89,8 +106,52 @@ An additional node does not guarantee that replicas run on different nodes; exis
 redistributed. Switching or scaling nodes can affect availability, and the extra VM consumes student credits.
 If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` when role
 assignments are not allowed, and `COSMOS_SERVERLESS=true` when the free tier is already used.
-After it finishes, continue with section 6 (first deploy).
-Delete everything with `bash infra/destroy.sh`.
+### 3. Create the Kubernetes deployments
+
+The script creates infrastructure and the database secret, but does not deploy the application. Connect `kubectl`
+to AKS and check the context before applying manifests:
+
+```bash
+az aks get-credentials -g todo-rg -n todo-aks --admin
+kubectl config current-context
+kubectl apply -f kubernetes-aks/todo-api-deployment.yaml -f kubernetes-aks/todo-api-service.yaml
+kubectl get svc todo-api -w
+```
+
+Use the resource group name from `RG` if overridden. Once an `EXTERNAL-IP` appears, stop watching with Ctrl+C.
+Set `VITE_API_URL` in [todo-app-deployment.yaml](../kubernetes-aks/todo-app-deployment.yaml) to
+`http://<API_EXTERNAL_IP>:5000`, then create the frontend:
+
+```bash
+kubectl apply -f kubernetes-aks/todo-app-deployment.yaml -f kubernetes-aks/todo-app-service.yaml
+```
+
+### 4. Build and deploy the application
+
+Review, commit and push the updated manifests and workflow files to `main`. In GitHub **Actions**, manually run
+both `todo-api CI/CD` and `todo-app CI/CD` using **Run workflow**. The workflows build and push the container images,
+then update the existing AKS deployments. Pods may show image-pull errors until the first images are available.
+Once both workflows succeed:
+
+```bash
+kubectl get pods
+kubectl get svc todo-app -w
+```
+
+When the frontend `EXTERNAL-IP` appears, open `http://<APP_EXTERNAL_IP>:3000`. Later pushes to `main` affecting
+the relevant service or workflow trigger its pipeline automatically.
+
+### 5. Clean up
+
+```bash
+bash infra/destroy.sh
+```
+
+Confirm with `y`. The script deletes the entire `todo-rg` resource group asynchronously, including its data.
+For a custom group use `RG=<group-name> bash infra/destroy.sh`. Verify deletion has finished in the Azure portal
+or with `az group exists -n todo-rg`; also check that the AKS-managed `MC_...` group has disappeared.
+Unrelated groups such as `NetworkWatcherRG` are not targeted.
+Alternatively, run `az group delete -n todo-rg --yes` to delete the default group directly.
 
 # The sections below do the same thing by hand, for reference.
 
@@ -309,10 +370,3 @@ kubectl logs deploy/todo-api        # should print "Connected to MongoDB"
 
 Push a change inside `todo-api/` or `todo-app/` to `main`: only that service's workflow runs, pushes a new
 image to ACR and rolls it out.
-
-## Caveats
-
-- `todo-api` logs `MONGO_URI` on startup (`startup/dbConnect.ts`), which would print the Cosmos key to the pod logs.
-  Remove that `console.log` or log only the host.
-- Keep the kubeconfig and ACR password only in GitHub secrets. Rotate them (`az acr credential renew`) after the demo,
-  or just delete the resource group.
