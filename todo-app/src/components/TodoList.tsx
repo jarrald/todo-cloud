@@ -9,7 +9,7 @@ interface Props {
 const TodoList = ({ todos, onDelete, onComplete }: Props) => {
   return (
     <div>
-      <h1>Todo List</h1>
+      <h1>Todo List - New version</h1>
       <ul className="list-group">
         {todos.map((todo) => (
           <li className="list-group-item" key={todo._id}>
