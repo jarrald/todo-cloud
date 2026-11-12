@@ -19,6 +19,6 @@ spec:
             - containerPort: 3000
           env:
             - name: VITE_API_URL
-              value: "http://API_EXTERNAL_IP:5000" # public IP of the todo-api LoadBalancer (browser calls the API directly)
+              value: "http://131.163.55.93:5000" # public IP of the todo-api LoadBalancer (browser calls the API directly)
             - name: CHOKIDAR_USEPOLLING
               value: "true"
