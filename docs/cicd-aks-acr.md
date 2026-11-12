@@ -165,6 +165,17 @@ Docker Hub secrets are no longer needed.
 
 ## 5. Kubernetes manifests
 
+`kubectl` uses the same commands for local clusters and AKS; its current context determines the target cluster.
+Check the context before making changes:
+
+```bash
+kubectl config current-context
+kubectl config get-contexts
+kubectl config use-context <context-name>  # for example, docker-desktop for Docker Desktop
+```
+
+Switching to a local context does not stop or delete Azure resources, which may continue to incur charges.
+
 The AKS manifests live in `kubernetes-aks/` (the `kubernetes/` folder, with the MongoDB pod, stays for local clusters).
 Differences from `kubernetes/`:
 
