@@ -20,7 +20,9 @@ but needs no directory permissions, which is fine for a demo.
 | Cosmos DB for MongoDB (RU) | Free tier (1000 RU/s, 25 GB) | $0                          |
 | Public IPs                 | 2 x LoadBalancer             | ~ a few $/month             |
 
-**Delete everything when the demo is done:** `az group delete -n todo-rg --yes`.
+**Delete the demo resources when finished:** run `bash infra/destroy.sh` and confirm when prompted. It starts
+deleting `todo-rg` in the background. Alternatively, delete the group directly with
+`az group delete -n todo-rg --yes`. Both options delete all resources in the group.
 You can also pause the cluster between sessions: `az aks stop -g todo-rg -n todo-aks` (and `az aks start ...`).
 The node estimate is approximate; actual pricing varies by region. Set `AKS_NODE_COUNT=1` for a lower-cost demo.
 
