@@ -1,6 +1,6 @@
 import { Router } from "express";
-import Todo from "../models/todo";
 import CreateTodoDto from "../dtos/createTodoDto";
+import Todo from "../models/todo";
 
 const todoRouter = Router();
 
@@ -20,6 +20,7 @@ todoRouter.post("/", async (req, res) => {
   try {
     const savedTodo = await todo.save();
     res.json(savedTodo);
+    console.log("Todo created successfully:", savedTodo);
   } catch (error) {
     res.json({ message: error });
   }
@@ -38,7 +39,7 @@ todoRouter.put("/:todoId/complete", async (req, res) => {
   try {
     const updatedTodo = await Todo.updateOne(
       { _id: req.params.todoId },
-      { completed: true }
+      { completed: true },
     );
     res.json(updatedTodo);
   } catch (error) {
