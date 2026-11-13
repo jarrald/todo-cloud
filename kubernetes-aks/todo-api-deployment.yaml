@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: todo-api
-          image: todoacrd443z4dn4xi5s.azurecr.io/todo-api:latest # replace YOUR_ACR with the ACR name
+          image: YOUR_ACR.azurecr.io/todo-api:latest
           ports:
             - containerPort: 5000
           env:

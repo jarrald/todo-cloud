@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deletes the resource group with all demo resources (ACR, AKS, Cosmos DB).
+# Deletes the resource group with all demo resources, including the Function and deployment identity.
 # Run:  bash infra/destroy.sh
 
 set -euo pipefail

@@ -2,14 +2,14 @@
 
 Goal: a low-cost demo that works on an Azure for Students subscription.
 
-- The Function workflow uses a GitHub-federated Azure managed identity; creating it and assigning its role
-  requires appropriate Azure permissions.
+- The deploy script creates the Function workflow's GitHub-federated Azure managed identity and role assignment.
 - No MongoDB pod: the database is Azure Cosmos DB for MongoDB (free tier).
 - Two small AKS nodes, free AKS control plane, ACR Basic.
 - Each service has its own workflow, triggered by relevant pushes to `main` or manually in GitHub Actions.
 
 The container workflows use GitHub secrets (ACR admin user + AKS kubeconfig). The Function workflow uses
-OIDC and a managed identity instead. Treat the kubeconfig and registry credentials as sensitive.
+OIDC and a managed identity instead. Treat the kubeconfig and registry credentials as sensitive. The identity
+is created inside the demo resource group and is removed when that group is deleted.
 
 ## Rough cost
 
@@ -37,9 +37,11 @@ Run the commands in the VS Code integrated terminal (bash).
 | --------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Azure CLI (`az`)            | everything in `infra/`                | macOS: `brew install azure-cli`<br>Windows: `winget install -e --id Microsoft.AzureCLI`<br>Linux: <https://learn.microsoft.com/cli/azure/install-azure-cli-linux> |
 | `kubectl`                   | secrets and deployments in AKS        | after installing `az`: `az aks install-cli` (or `brew install kubectl`)                                                                                           |
-| GitHub CLI (`gh`), optional | sets the GitHub secrets automatically | macOS: `brew install gh`<br>Windows: `winget install -e --id GitHub.cli`<br>then `gh auth login`                                                                  |
+| GitHub CLI (`gh`)           | configures and runs GitHub workflows   | macOS: `brew install gh`<br>Windows: `winget install -e --id GitHub.cli`<br>then `gh auth login`                                                                  |
 | Git                         | clone and push the repository         | Windows: `winget install -e --id Git.Git`<br>Other platforms: <https://git-scm.com/install/>                                                                     |
 | Bash                        | running the scripts                   | built in on macOS/Linux; on Windows use Git Bash or WSL                                                                                                           |
+| `curl`                      | verifies deployed services            | Included in most current operating systems                                                                                                                       |
+| Node.js 22                  | validates endpoint responses          | <https://nodejs.org/>                                                                                                                                            |
 
 Check the installation and sign in. **After installing, close and reopen the terminal, or restart VS Code completely**
 (on Windows, sign out and in again if `az` is still not found). Terminals only pick up new tools at startup.
@@ -53,8 +55,8 @@ az account show     # confirm the right subscription is selected
 If several subscriptions are listed, choose the student one: `az account set --subscription "<name or id>"`.
 
 **No installs alternative:** use Azure Cloud Shell (<https://shell.azure.com>, choose Bash). It already has `az`,
-`kubectl` and Bicep, and you are already logged in. Run `gh auth login` there if you want the GitHub secrets set
-automatically, then `git clone` the repo and run the scripts.
+`kubectl` and Bicep, and you are already logged in. Install GitHub CLI if needed, run `gh auth login`,
+then `git clone` the repo and run the scripts.
 
 ## Automated setup: deploy and destroy scripts
 
@@ -67,11 +69,11 @@ to clone the repository and push the manifests and workflows. Docker is not need
 az login
 az account show             # check the subscription
 kubectl version --client    # check kubectl is installed
-gh auth login               # optional, for automatic GitHub configuration
+gh auth login               # must have access to manage Actions secrets and variables
 ```
 
-For `gh`, sign in to an account with permission to manage the target repository's Actions secrets and variables.
-If you skip it, the deploy script prints instructions to configure them manually.
+For `gh`, sign in to an account with permission to manage the target repository's Actions secrets and variables
+and trigger workflows. Your Azure account needs permission to create the resources and assign roles.
 
 ### 2. Deploy infrastructure
 
@@ -79,14 +81,21 @@ If you skip it, the deploy script prints instructions to configure them manually
 bash infra/deploy.sh
 ```
 
-The script registers providers, deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS, Cosmos DB, Function App and storage),
-creates the `mongo-secret` in AKS, replaces the `YOUR_ACR.azurecr.io` placeholder in the manifests, and sets
-GitHub repository secrets (`ACR_USERNAME`, `ACR_PASSWORD`, `KUBE_CONFIG`) and the `ACR_LOGIN_SERVER`,
-`AZURE_FUNCTIONAPP_NAME`, and `VITE_STATISTICS_URL` variables
-when `gh` is installed and authenticated. If the manifests already contain a registry address, verify and update
-them manually: the script only replaces the placeholder. Do not commit credentials or kubeconfig.
+Before running, commit and push the code to `main`. The local commit must match the target repository's
+`main`, and application, infrastructure, manifest and workflow files must have no uncommitted changes. Set
+`GITHUB_REPO=owner/repo` if the intended GitHub repository is not the current repository.
+Push-triggered workflows may fail before the infrastructure and GitHub settings exist; the script runs them
+again after configuring everything.
+
+The script deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS, Cosmos DB, Function App,
+storage, and the GitHub managed identity), configures the database secret, and renders the registry
+name into the AKS manifests without changing the files. It applies the manifests, waits for public IPs,
+configures Function CORS and GitHub secrets and variables, then triggers and waits for all three workflows.
+Finally it verifies the API, frontend, Function and CORS. It prints the frontend URL when complete.
+
 The Function reads the same Cosmos database as the API. Its database connection is stored in Azure app
-settings, not in the frontend or GitHub.
+settings, not in the frontend or GitHub. Do not commit credentials or kubeconfig. The API's existing
+seed script replaces the todos whenever the API starts, including during deployment and restarts.
 
 The default location is `norwayeast` for AKS and ACR, and `uksouth` for Cosmos DB. Available regions may differ for
 each Azure for Students subscription.
@@ -112,68 +121,20 @@ kubectl get pods -l app=todo-api -o wide
 
 An additional node does not guarantee that replicas run on different nodes; existing pods are not automatically
 redistributed. Switching or scaling nodes can affect availability, and the extra VM consumes student credits.
-If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` when role
-assignments are not allowed, and `COSMOS_SERVERLESS=true` when the free tier is already used.
-### 3. Create the Kubernetes deployments
-
-The script creates infrastructure and the database secret, but does not deploy the application. Connect `kubectl`
-to AKS and check the context before applying manifests:
-
-```bash
-az aks get-credentials -g todo-rg -n todo-aks --admin
-kubectl config current-context
-kubectl apply -f kubernetes-aks/todo-api-deployment.yaml -f kubernetes-aks/todo-api-service.yaml
-kubectl get svc todo-api -w
-```
-
-Use the resource group name from `RG` if overridden. Once an `EXTERNAL-IP` appears, stop watching with Ctrl+C.
-Set the GitHub Actions variable `VITE_API_URL` to `http://<API_EXTERNAL_IP>:5000`, then create the frontend:
-
-```bash
-kubectl apply -f kubernetes-aks/todo-app-deployment.yaml -f kubernetes-aks/todo-app-service.yaml
-```
-
-The production frontend embeds both URLs at **image build time**. Changing environment variables in the
-Kubernetes deployment alone does not change the built application; rerun the `todo-app` workflow after
-changing either GitHub variable.
-
-### 4. Build and deploy the application
-
-Before running `todo-functions CI/CD`, configure GitHub OIDC:
-
-1. Create a user-assigned managed identity and grant it **Website Contributor** on the Function App.
-2. Add a federated credential for this repository and the `main` branch.
-3. Set GitHub Actions variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`
-   to the identity client ID, tenant ID, and subscription ID.
-
-See the [Azure Functions action OIDC instructions](https://github.com/Azure/functions-action#use-oidc-recommended).
-If your account cannot create the identity or role assignment, ask a subscription administrator.
-
-Review, commit and push the updated manifests and workflow files to `main`. In GitHub **Actions**, manually run
-`todo-api CI/CD`, `todo-app CI/CD`, and `todo-functions CI/CD` using **Run workflow**. The container workflows build and push the images,
-then update the existing AKS deployments. Pods may show image-pull errors until the first images are available.
-Once both workflows succeed:
-
-```bash
-kubectl get pods
-kubectl get svc todo-app -w
-```
-
-When the frontend `EXTERNAL-IP` appears, open `http://<APP_EXTERNAL_IP>:3000`. Later pushes to `main` affecting
-the relevant service or workflow trigger its pipeline automatically.
-
-Allow the exact frontend origin in Function CORS (no trailing slash), then redeploy the infrastructure:
-
-```bash
-FRONTEND_ORIGIN=http://<APP_EXTERNAL_IP>:3000 bash infra/deploy.sh
-```
-
-Keep the same overrides used for the initial deployment. The Function is anonymous and CORS is not an
-authorization mechanism; this is intended as a public demo endpoint. Check the Function URL from the
-deployment output with `curl "<FUNCTION_BASE_URL>/api/statistics"` and confirm the counts change in the UI.
+If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` if the
+AKS-to-ACR role assignment is denied, and `COSMOS_SERVERLESS=true` when the free tier is already used.
+The Function identity still requires permission to create its separate role assignment.
+The frontend embeds both API URLs at image build time. The workflow uses a unique image tag per run,
+so rerunning it after updating a URL deploys the new configuration even for the same commit.
+The API workflow also uses a unique tag so an updated database secret is loaded by the new API pod.
+`FRONTEND_ORIGIN` can override the discovered origin when using a custom frontend address.
+The Function is anonymous and CORS is not an authorization mechanism; this is a public demo endpoint.
 Monitor Function errors and MongoDB connections, particularly if the Function scales out.
+If role assignment is denied, ask a subscription administrator for the required permission.
+New Azure identity and role assignments can take time to propagate; if Function authentication fails
+immediately after provisioning, wait a few minutes and rerun the script.
 
-### 5. Clean up
+### 3. Clean up
 
 ```bash
 bash infra/destroy.sh
@@ -185,7 +146,8 @@ or with `az group exists -n todo-rg`; also check that the AKS-managed `MC_...` g
 Unrelated groups such as `NetworkWatcherRG` are not targeted.
 Alternatively, run `az group delete -n todo-rg --yes` to delete the default group directly.
 
-# The sections below do the same thing by hand, for reference.
+# The sections below describe the container setup by hand, for reference.
+# Use the automated script above to create and deploy the Function and its GitHub identity.
 
 ## 1. Create Azure resources (one time)
 
@@ -315,7 +277,8 @@ kubectl create secret docker-registry acr-secret --docker-server=<ACR_LOGIN_SERV
 
 ## 6. First deploy (one time)
 
-Images must exist in ACR before the pods can start, so run the workflows first (section 7), or push once manually:
+Images must exist in ACR before the pods can start. The workflows require the deployments to exist;
+apply manifests with your actual ACR address first, or push images manually:
 
 ```bash
 az acr login -n $ACR

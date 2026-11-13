@@ -11,6 +11,7 @@ on:
 env:
   SERVICE: todo-api
   IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/todo-api
+  IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
   build-and-deploy:
@@ -31,7 +32,7 @@ jobs:
           context: ./${{ env.SERVICE }}
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
             ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -43,5 +44,5 @@ jobs:
 
       - name: Deploy to AKS
         run: |
-          kubectl set image deployment/${{ env.SERVICE }} ${{ env.SERVICE }}=${{ env.IMAGE }}:${{ github.sha }}
+          kubectl set image deployment/${{ env.SERVICE }} ${{ env.SERVICE }}=${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
           kubectl rollout status deployment/${{ env.SERVICE }} --timeout=180s

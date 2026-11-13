@@ -8,6 +8,8 @@ param aksVmSize string = 'Standard_B2s'
 @minValue(1)
 param aksNodeCount int = 2
 param databaseName string = 'todosDB'
+@description('GitHub repository in owner/name form, authorized for the main branch')
+param githubRepo string
 
 @description('Exact deployed frontend origin, including scheme and port; empty disables cross-origin access')
 param frontendOrigin string = ''
@@ -63,6 +65,7 @@ module functions 'modules/functions.bicep' = {
     cosmosName: cosmos.outputs.name
     databaseName: databaseName
     frontendOrigin: frontendOrigin
+    githubRepo: githubRepo
   }
 }
 
@@ -72,3 +75,4 @@ output aksName string = aks.outputs.name
 output cosmosName string = cosmos.outputs.name
 output functionsName string = functions.outputs.name
 output statisticsUrl string = functions.outputs.baseUrl
+output githubClientId string = functions.outputs.githubClientId

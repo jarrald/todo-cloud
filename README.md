@@ -108,6 +108,8 @@ NOTE: If you don't install the dependencies for the todo-api, the container will
 Deploy the frontend and API to AKS alongside an Azure Function App and a shared
 Cosmos DB database. See the [AKS deployment and CI/CD guide](docs/cicd-aks-acr.md)
 for setup and deployment instructions. Azure deployment creates billable resources.
+The deploy script configures the GitHub identity, service URLs, CORS, and workflows
+automatically after the code is pushed to `main`.
 
 ## Local Kubernetes Setup
 

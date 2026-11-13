@@ -4,6 +4,7 @@ param location string
 param cosmosName string
 param databaseName string
 param frontendOrigin string
+param githubRepo string
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' existing = {
   name: cosmosName
@@ -96,5 +97,33 @@ resource app 'Microsoft.Web/sites@2024-04-01' = {
   }
 }
 
+resource githubIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${name}-github'
+  location: location
+}
+
+resource githubFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = {
+  parent: githubIdentity
+  name: 'github-main'
+  properties: {
+    audiences: ['api://AzureADTokenExchange']
+    issuer: 'https://token.actions.githubusercontent.com'
+    subject: 'repo:${githubRepo}:ref:refs/heads/main'
+  }
+}
+
+var websiteContributorRoleId = 'de139f84-1756-47ae-9be6-808fbbe84772'
+
+resource githubDeploymentRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: app
+  name: guid(app.id, githubIdentity.id, websiteContributorRoleId)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
+    principalId: githubIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output name string = app.name
 output baseUrl string = 'https://${app.properties.defaultHostName}'
+output githubClientId string = githubIdentity.properties.clientId
