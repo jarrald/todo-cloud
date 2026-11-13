@@ -80,7 +80,7 @@ gh auth login               # must have access to manage Actions secrets and var
 For `gh`, sign in to an account with permission to manage the target repository's Actions secrets and variables
 and trigger workflows. Your Azure account needs permission to create the resources and assign roles.
 
-### 2. Deploy the demo
+### 2. Deploy the demo in bash
 
 ```bash
 bash infra/deploy.sh
