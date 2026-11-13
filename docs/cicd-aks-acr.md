@@ -69,9 +69,11 @@ to clone the repository and push the manifests and workflows. Docker is not need
 ### 1. Sign in
 
 ```bash
-az login
+
 az account show             # check the subscription
+az login                  # sign in to Azure if not already signed in
 kubectl version --client    # check kubectl is installed
+gh auth status       # check GitHub CLI is installed and signed in
 gh auth login               # must have access to manage Actions secrets and variables
 ```
 
