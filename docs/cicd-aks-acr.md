@@ -132,6 +132,76 @@ The `get-credentials` command above adds admin credentials to your normal kubeco
 An additional node does not guarantee that replicas run on different nodes; existing pods are not automatically
 redistributed. Switching or scaling nodes can affect availability, and the extra VM consumes student credits.
 
+## Observe the deployment in Azure portal
+
+Sign in to the [Azure portal](https://portal.azure.com), open **Resource groups**, and select `todo-rg`
+(or the group named by `RG`). The resource group is the starting point for the resources created by this demo.
+Use the resource names printed by `infra/deploy.sh` if you have changed the defaults.
+
+### Resource and network overview
+
+The public IPs and load balancers for the Kubernetes `LoadBalancer` services are managed in the AKS node
+resource group, whose name starts with `MC_`; the cluster's **Properties** page shows its name. The deployment
+does not create a custom VNet, private endpoints, or a firewall path between these services. The frontend and
+API services are public; Cosmos DB and the Function App also use their Azure service endpoints.
+
+### Portal walkthrough
+
+Start at the resource group's **Overview** page to see the resources created for the demo. Open **Deployments**
+to review the Bicep deployment and whether resource provisioning succeeded. The resource group's **Activity log**
+shows Azure management operations and failures; it is not a record of requests handled by the application.
+
+Open the AKS resource (`todo-aks` by default) and select **Kubernetes resources**. In **Workloads**, check that
+the `todo-app` and `todo-api` deployments have ready pods. In **Services and ingresses**, find the frontend
+and API services and their external IP addresses. These IPs are the public entry points for the application.
+The **Nodes** view shows the system node pool and its node health. Portal labels can vary by version and
+permissions.
+
+To follow the public network path, use the cluster's **Properties** page to find its AKS-managed node resource
+group, usually named `MC_...`. Open that group to inspect the Azure load balancers and public IP resources
+created for the Kubernetes services. Treat these as AKS-managed resources; do not modify them directly.
+This deployment uses public service IPs and does not create a custom VNet or private endpoints.
+
+Next, open the Container Registry and check **Repositories** for the frontend and API images produced by the
+GitHub Actions workflows. In the Function App, open **Functions** to locate the statistics endpoint; the
+**Monitor** view may show invocation details depending on the available monitoring configuration. The Cosmos
+DB account's **Metrics** page shows account-level request, availability, and capacity data. These separate
+resource views help trace the application path: the browser reaches the public AKS services and Function App,
+while the API and Function read or write data in Cosmos DB.
+
+For a quick health check, confirm that both AKS services have external IPs, the expected pods are ready, and
+the latest workflow images appear in ACR. Compare these with the frontend URL and verification output printed
+by the deploy script.
+
+### Monitoring and logs
+
+The deployment does **not** configure Container Insights, a Log Analytics workspace, Azure Managed Prometheus,
+Application Insights, or alert rules. Azure portal resource metrics, health, and the Activity log are useful
+for basic inspection, but pod/container logs and cluster-level dashboards require enabling the relevant Azure
+Monitor integration. From the AKS resource, open **Insights** or **Monitoring** and follow the setup prompt to
+associate or create a Log Analytics workspace. Review workspace retention and pricing before enabling it;
+ingestion and retention can incur charges. Enabling monitoring is an additional configuration step and does
+not change the deployment's existing Bicep setup.
+
+Opening **Insights** before monitoring is configured may show a prompt rather than workload logs. The Function
+App and Cosmos DB metrics are separate from AKS container monitoring; detailed Function logs may require
+Application Insights.
+
+### Optional: Inspect AKS with Lens
+
+[Lens K8S IDE](https://docs.lenshq.io/k8slens/) provides a graphical view of Kubernetes resources, including
+nodes, workloads, pods, services, events, and pod logs, subject to your cluster permissions. To connect it to
+this cluster, add AKS credentials to your local kubeconfig, then select that cluster in Lens:
+
+```bash
+az aks get-credentials -g todo-rg -n todo-aks
+```
+
+Use the resource group and cluster names used for your deployment. Prefer a least-privilege account and treat
+the kubeconfig as sensitive. Lens complements the Azure portal; it does not show Azure resource-group
+deployments, Azure load balancers and public IP resources, ACR, the Function App, or Cosmos DB metrics.
+Metrics availability depends on the cluster's metrics APIs and configuration.
+
 ### Troubleshooting
 
 If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` if the
