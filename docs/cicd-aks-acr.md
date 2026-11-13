@@ -11,8 +11,15 @@ The container workflows use GitHub secrets (ACR admin user + AKS kubeconfig). Th
 OIDC and a managed identity instead. Treat the kubeconfig and registry credentials as sensitive. The identity
 is created inside the demo resource group and is removed when that group is deleted.
 
-See the [application architecture](diagrams/architecture.md) and
-[automated deployment](diagrams/deployment.md) diagrams for an overview.
+## Overview diagrams
+
+### Application architecture
+
+![Application architecture diagram](diagrams/architecture.svg)
+
+### Automated deployment
+
+![Automated deployment diagram](diagrams/deployment.svg)
 
 ## Rough cost
 
