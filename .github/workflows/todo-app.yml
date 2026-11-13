@@ -26,9 +26,19 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      - name: Check frontend build configuration
+        env:
+          API_URL: ${{ vars.VITE_API_URL }}
+          STATISTICS_URL: ${{ vars.VITE_STATISTICS_URL }}
+        run: test -n "$API_URL" && test -n "$STATISTICS_URL"
+
       - uses: docker/build-push-action@v6
         with:
           context: ./${{ env.SERVICE }}
+          file: ./${{ env.SERVICE }}/Dockerfile-prod-azure
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_STATISTICS_URL=${{ vars.VITE_STATISTICS_URL }}
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}

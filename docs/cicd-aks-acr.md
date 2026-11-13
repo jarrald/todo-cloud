@@ -2,13 +2,14 @@
 
 Goal: a low-cost demo that works on an Azure for Students subscription.
 
-- No service principal / Entra app registration (students usually cannot create them).
+- The Function workflow uses a GitHub-federated Azure managed identity; creating it and assigning its role
+  requires appropriate Azure permissions.
 - No MongoDB pod: the database is Azure Cosmos DB for MongoDB (free tier).
 - Two small AKS nodes, free AKS control plane, ACR Basic.
 - Each service has its own workflow, triggered by relevant pushes to `main` or manually in GitHub Actions.
 
-Credentials are stored as GitHub secrets (ACR admin user + AKS kubeconfig). This is less secure than OIDC
-but needs no directory permissions, which is fine for a demo.
+The container workflows use GitHub secrets (ACR admin user + AKS kubeconfig). The Function workflow uses
+OIDC and a managed identity instead. Treat the kubeconfig and registry credentials as sensitive.
 
 ## Rough cost
 
@@ -19,6 +20,7 @@ but needs no directory permissions, which is fine for a demo.
 | ACR                        | Basic                        | ~ $5/month                  |
 | Cosmos DB for MongoDB (RU) | Free tier (1000 RU/s, 25 GB) | $0                          |
 | Public IPs                 | 2 x LoadBalancer             | ~ a few $/month             |
+| Function App and storage   | Flex Consumption and LRS     | Usage-based; varies by region |
 
 **Delete the demo resources when finished:** run `bash infra/destroy.sh` and confirm when prompted. It starts
 deleting `todo-rg` in the background. Alternatively, delete the group directly with
@@ -77,11 +79,14 @@ If you skip it, the deploy script prints instructions to configure them manually
 bash infra/deploy.sh
 ```
 
-The script registers providers, deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS and Cosmos DB),
+The script registers providers, deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS, Cosmos DB, Function App and storage),
 creates the `mongo-secret` in AKS, replaces the `YOUR_ACR.azurecr.io` placeholder in the manifests, and sets
-GitHub repository secrets (`ACR_USERNAME`, `ACR_PASSWORD`, `KUBE_CONFIG`) and the `ACR_LOGIN_SERVER` variable
+GitHub repository secrets (`ACR_USERNAME`, `ACR_PASSWORD`, `KUBE_CONFIG`) and the `ACR_LOGIN_SERVER`,
+`AZURE_FUNCTIONAPP_NAME`, and `VITE_STATISTICS_URL` variables
 when `gh` is installed and authenticated. If the manifests already contain a registry address, verify and update
 them manually: the script only replaces the placeholder. Do not commit credentials or kubeconfig.
+The Function reads the same Cosmos database as the API. Its database connection is stored in Azure app
+settings, not in the frontend or GitHub.
 
 The default location is `norwayeast` for AKS and ACR, and `uksouth` for Cosmos DB. Available regions may differ for
 each Azure for Students subscription.
@@ -92,6 +97,9 @@ its location does not change. Use a new `RG` if existing resources need to remai
 location setting does not move an existing Cosmos DB account.
 Settings can be overridden with environment variables, for example
 `LOCATION=northeurope COSMOS_LOCATION=uksouth AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh`.
+The Function and its storage default to `LOCATION`; use `FUNCTIONS_LOCATION` to select a region
+that supports Flex Consumption. Check available regions with
+`az functionapp list-flexconsumption-locations -o table` and your subscription's restrictions.
 The default AKS node count is two (`AKS_NODE_COUNT=1` overrides it). Existing clusters do not change until you
 redeploy or scale the node pool manually:
 
@@ -119,17 +127,30 @@ kubectl get svc todo-api -w
 ```
 
 Use the resource group name from `RG` if overridden. Once an `EXTERNAL-IP` appears, stop watching with Ctrl+C.
-Set `VITE_API_URL` in [todo-app-deployment.yaml](../kubernetes-aks/todo-app-deployment.yaml) to
-`http://<API_EXTERNAL_IP>:5000`, then create the frontend:
+Set the GitHub Actions variable `VITE_API_URL` to `http://<API_EXTERNAL_IP>:5000`, then create the frontend:
 
 ```bash
 kubectl apply -f kubernetes-aks/todo-app-deployment.yaml -f kubernetes-aks/todo-app-service.yaml
 ```
 
+The production frontend embeds both URLs at **image build time**. Changing environment variables in the
+Kubernetes deployment alone does not change the built application; rerun the `todo-app` workflow after
+changing either GitHub variable.
+
 ### 4. Build and deploy the application
 
+Before running `todo-functions CI/CD`, configure GitHub OIDC:
+
+1. Create a user-assigned managed identity and grant it **Website Contributor** on the Function App.
+2. Add a federated credential for this repository and the `main` branch.
+3. Set GitHub Actions variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`
+   to the identity client ID, tenant ID, and subscription ID.
+
+See the [Azure Functions action OIDC instructions](https://github.com/Azure/functions-action#use-oidc-recommended).
+If your account cannot create the identity or role assignment, ask a subscription administrator.
+
 Review, commit and push the updated manifests and workflow files to `main`. In GitHub **Actions**, manually run
-both `todo-api CI/CD` and `todo-app CI/CD` using **Run workflow**. The workflows build and push the container images,
+`todo-api CI/CD`, `todo-app CI/CD`, and `todo-functions CI/CD` using **Run workflow**. The container workflows build and push the images,
 then update the existing AKS deployments. Pods may show image-pull errors until the first images are available.
 Once both workflows succeed:
 
@@ -140,6 +161,17 @@ kubectl get svc todo-app -w
 
 When the frontend `EXTERNAL-IP` appears, open `http://<APP_EXTERNAL_IP>:3000`. Later pushes to `main` affecting
 the relevant service or workflow trigger its pipeline automatically.
+
+Allow the exact frontend origin in Function CORS (no trailing slash), then redeploy the infrastructure:
+
+```bash
+FRONTEND_ORIGIN=http://<APP_EXTERNAL_IP>:3000 bash infra/deploy.sh
+```
+
+Keep the same overrides used for the initial deployment. The Function is anonymous and CORS is not an
+authorization mechanism; this is intended as a public demo endpoint. Check the Function URL from the
+deployment output with `curl "<FUNCTION_BASE_URL>/api/statistics"` and confirm the counts change in the UI.
+Monitor Function errors and MongoDB connections, particularly if the Function scales out.
 
 ### 5. Clean up
 
@@ -235,6 +267,12 @@ Variables:
 | Name               | Value                        |
 | ------------------ | ---------------------------- |
 | `ACR_LOGIN_SERVER` | e.g. `todoacr123.azurecr.io` |
+| `VITE_API_URL` | Browser-accessible API base URL |
+| `VITE_STATISTICS_URL` | Function base URL, without `/api/statistics` |
+| `AZURE_FUNCTIONAPP_NAME` | Function App name |
+| `AZURE_CLIENT_ID` | Federated managed identity client ID |
+| `AZURE_TENANT_ID` | Azure tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
 Docker Hub secrets are no longer needed.
 
@@ -258,8 +296,7 @@ Differences from `kubernetes/`:
 - `todo-api` reads `MONGO_URI` from the `mongo-secret` Kubernetes secret.
 - Images come from ACR. Replace `YOUR_ACR` with your ACR name in both Deployments.
 - Both services are `type: LoadBalancer`.
-- `VITE_API_URL` in the `todo-app` Deployment must be the public address of the API (replace `API_EXTERNAL_IP`, see section 6),
-  because the browser calls the API directly.
+- The frontend image must be built with browser-accessible `VITE_API_URL` and `VITE_STATISTICS_URL` values.
 
 Store the Cosmos connection string as a Kubernetes secret (never commit it):
 
@@ -283,7 +320,9 @@ Images must exist in ACR before the pods can start, so run the workflows first (
 ```bash
 az acr login -n $ACR
 docker build -t <ACR_LOGIN_SERVER>/todo-api:latest ./todo-api && docker push <ACR_LOGIN_SERVER>/todo-api:latest
-docker build -t <ACR_LOGIN_SERVER>/todo-app:latest ./todo-app && docker push <ACR_LOGIN_SERVER>/todo-app:latest
+docker build -f ./todo-app/Dockerfile-prod-azure --build-arg VITE_API_URL=<API_BASE_URL> \
+  --build-arg VITE_STATISTICS_URL=<FUNCTION_BASE_URL> -t <ACR_LOGIN_SERVER>/todo-app:latest ./todo-app
+docker push <ACR_LOGIN_SERVER>/todo-app:latest
 ```
 
 Then:
@@ -293,72 +332,20 @@ kubectl apply -f kubernetes-aks/todo-api-deployment.yaml -f kubernetes-aks/todo-
 kubectl get svc todo-api -w          # wait for EXTERNAL-IP
 ```
 
-Put that IP in `VITE_API_URL` (`http://<API_EXTERNAL_IP>:5000`) in `todo-app-deployment.yaml`, commit it, and apply the rest:
+Build the frontend with `VITE_API_URL=http://<API_EXTERNAL_IP>:5000` and the Function base URL, then apply the rest:
 
 ```bash
 kubectl apply -f kubernetes-aks/todo-app-deployment.yaml -f kubernetes-aks/todo-app-service.yaml
 kubectl get svc todo-app -w          # open http://<APP_EXTERNAL_IP>:3000
 ```
 
-The todo-app container runs the Vite dev server (`npm run dev`), so `VITE_API_URL` is read at container start
-and does not need to be a build argument.
+The Azure frontend image serves a production Vite build, so changing either URL requires rebuilding the image.
 
 ## 7. Workflows
 
-Replace `.github/workflows/todo-api.yml` with the following. For `todo-app.yml`, use the same file with
-`SERVICE: todo-app`, the `todo-app/**` path and the name `todo-app CI/CD`.
-Once the workflows are on the default branch, either can also be started from GitHub Actions using **Run workflow**.
+The existing workflows are `.github/workflows/todo-api.yml`, `todo-app.yml`, and `todo-functions.yml`.
+Once they are on the default branch, each can also be started from GitHub Actions using **Run workflow**.
 The deployment must already exist in AKS for the rollout step to succeed.
-
-```yaml
-name: todo-api CI/CD
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "todo-api/**"
-      - ".github/workflows/todo-api.yml"
-
-env:
-  SERVICE: todo-api
-  IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/todo-api
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: ./${{ env.SERVICE }}
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - uses: azure/k8s-set-context@v4
-        with:
-          method: kubeconfig
-          kubeconfig: ${{ secrets.KUBE_CONFIG }}
-
-      - name: Deploy to AKS
-        run: |
-          kubectl set image deployment/${{ env.SERVICE }} ${{ env.SERVICE }}=${{ env.IMAGE }}:${{ github.sha }}
-          kubectl rollout status deployment/${{ env.SERVICE }} --timeout=180s
-```
 
 ## 8. Verify
 

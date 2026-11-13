@@ -20,5 +20,7 @@ spec:
           env:
             - name: VITE_API_URL
               value: "http://localhost:5000" # Use localhost for local development and browser access, for kubernetes cluster, it would be http://todo-api:5000
+            - name: VITE_STATISTICS_URL
+              value: "http://localhost:7071"
             - name: CHOKIDAR_USEPOLLING
               value: "true"

@@ -23,6 +23,7 @@ services:
       - "3000:3000" # Map the container port to the host port
     environment:
       VITE_API_URL: "http://localhost:5000"
+      VITE_STATISTICS_URL: "${VITE_STATISTICS_URL:-http://localhost:7071}"
       CHOKIDAR_USEPOLLING: true # Enable polling for file changes
     volumes:
       - ./todo-app:/app # Mount the local directory to the container

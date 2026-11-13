@@ -6,8 +6,10 @@
 #
 # Optional overrides (environment variables), e.g.  LOCATION=northeurope bash infra/deploy.sh
 #   RG=todo-rg  LOCATION=norwayeast  COSMOS_LOCATION=uksouth  AKS_VM_SIZE=Standard_B2s
+#   FUNCTIONS_LOCATION=norwayeast (must support Flex Consumption)
 #   AKS_NODE_COUNT=2  ATTACH_ACR=true
 #   COSMOS_SERVERLESS=true|false (default: auto)  GITHUB_REPO=owner/repo (default: current repo)
+#   FRONTEND_ORIGIN=https://example.com (exact browser origin, no path or trailing slash)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,9 +17,11 @@ cd "$(dirname "$0")/.."
 RG="${RG:-todo-rg}"
 LOCATION="${LOCATION:-norwayeast}"
 COSMOS_LOCATION="${COSMOS_LOCATION:-uksouth}"
+FUNCTIONS_LOCATION="${FUNCTIONS_LOCATION:-$LOCATION}"
 AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s}"
 AKS_NODE_COUNT="${AKS_NODE_COUNT:-2}"
 ATTACH_ACR="${ATTACH_ACR:-true}"
+FRONTEND_ORIGIN="${FRONTEND_ORIGIN:-}"
 DB_NAME="todosDB"
 DEPLOYMENT="todo-infra"
 
@@ -29,7 +33,7 @@ az account show >/dev/null 2>&1 || { echo "Not logged in. Run: az login"; exit 1
 echo "Subscription: $(az account show --query name -o tsv)"
 
 echo "Registering resource providers..."
-for provider in Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.DocumentDB; do
+for provider in Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.DocumentDB Microsoft.Storage Microsoft.Web; do
   az provider register --namespace "$provider" --wait
 done
 
@@ -55,15 +59,19 @@ else
 fi
 COSMOS_FREE=$(echo "$COSMOS_FREE" | tr '[:upper:]' '[:lower:]')
 COSMOS_SERVERLESS=$(echo "$COSMOS_SERVERLESS" | tr '[:upper:]' '[:lower:]')
-echo "Locations: AKS/ACR=$LOCATION Cosmos DB=$COSMOS_LOCATION"
+echo "Locations: AKS/ACR=$LOCATION Cosmos DB=$COSMOS_LOCATION Functions=$FUNCTIONS_LOCATION"
 echo "AKS: nodeCount=$AKS_NODE_COUNT vmSize=$AKS_VM_SIZE"
 echo "Cosmos DB: freeTier=$COSMOS_FREE serverless=$COSMOS_SERVERLESS"
+if [ -z "$FRONTEND_ORIGIN" ]; then
+  echo "WARNING: FRONTEND_ORIGIN is empty; browser requests to statistics will be blocked by CORS."
+fi
 
 echo "Deploying Bicep template (this takes about 5-10 minutes)..."
 if ! az deployment group create -g "$RG" -n "$DEPLOYMENT" -f infra/main.bicep \
-  -p location="$LOCATION" cosmosLocation="$COSMOS_LOCATION" aksVmSize="$AKS_VM_SIZE" \
+  -p location="$LOCATION" cosmosLocation="$COSMOS_LOCATION" functionsLocation="$FUNCTIONS_LOCATION" aksVmSize="$AKS_VM_SIZE" \
      aksNodeCount="$AKS_NODE_COUNT" attachAcr="$ATTACH_ACR" \
-     cosmosFreeTier="$COSMOS_FREE" cosmosServerless="$COSMOS_SERVERLESS" -o none; then
+     cosmosFreeTier="$COSMOS_FREE" cosmosServerless="$COSMOS_SERVERLESS" \
+     frontendOrigin="$FRONTEND_ORIGIN" -o none; then
   echo
   echo "Deployment failed. Common fixes:"
   echo "  - Role assignment denied:       ATTACH_ACR=false bash infra/deploy.sh"
@@ -78,6 +86,8 @@ ACR_NAME=$(output acrName)
 ACR_LOGIN=$(output acrLoginServer)
 AKS_NAME=$(output aksName)
 COSMOS_NAME=$(output cosmosName)
+FUNCTIONS_NAME=$(output functionsName)
+STATISTICS_URL=$(output statisticsUrl)
 
 ACR_USER=$(az acr credential show -n "$ACR_NAME" --query username -o tsv)
 ACR_PASS=$(az acr credential show -n "$ACR_NAME" --query 'passwords[0].value' -o tsv)
@@ -114,6 +124,8 @@ if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
   gh secret set ACR_PASSWORD --repo "$REPO" --body "$ACR_PASS"
   gh secret set KUBE_CONFIG --repo "$REPO" < "$KUBECONFIG_FILE"
   gh variable set ACR_LOGIN_SERVER --repo "$REPO" --body "$ACR_LOGIN"
+  gh variable set AZURE_FUNCTIONAPP_NAME --repo "$REPO" --body "$FUNCTIONS_NAME"
+  gh variable set VITE_STATISTICS_URL --repo "$REPO" --body "$STATISTICS_URL"
 else
   echo
   echo "gh is not installed or not logged in. Set these manually in GitHub (Settings > Secrets and variables > Actions):"
@@ -121,6 +133,8 @@ else
   echo "  Secret   ACR_PASSWORD = (az acr credential show -n $ACR_NAME --query 'passwords[0].value' -o tsv)"
   echo "  Secret   KUBE_CONFIG  = (az aks get-credentials -g $RG -n $AKS_NAME --admin --file - )"
   echo "  Variable ACR_LOGIN_SERVER = $ACR_LOGIN"
+  echo "  Variable AZURE_FUNCTIONAPP_NAME = $FUNCTIONS_NAME"
+  echo "  Variable VITE_STATISTICS_URL = $STATISTICS_URL"
 fi
 
 cat <<EOF
@@ -129,15 +143,18 @@ Done.
   ACR:    $ACR_LOGIN
   AKS:    $AKS_NAME (resource group $RG)
   Cosmos: $COSMOS_NAME (database $DB_NAME)
+  Functions: $FUNCTIONS_NAME ($STATISTICS_URL)
 
 Next steps:
-  1. Commit and push the updated kubernetes-aks/ manifests, then push a change to todo-api/ and todo-app/
-     (or push the images manually, see docs/cicd-aks-acr.md section 6).
+  1. Configure GitHub OIDC variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+     and a federated identity with Website Contributor on the Function App for the main branch.
+     Set GitHub variable VITE_API_URL to the browser-accessible API URL.
+     Push the code or run the todo-functions and todo-app workflows manually.
   2. az aks get-credentials -g $RG -n $AKS_NAME --admin
      kubectl apply -f kubernetes-aks/todo-api-deployment.yaml -f kubernetes-aks/todo-api-service.yaml
      kubectl get svc todo-api -w        # wait for EXTERNAL-IP
-  3. Put http://<API_EXTERNAL_IP>:5000 in VITE_API_URL in kubernetes-aks/todo-app-deployment.yaml, then
-     kubectl apply -f kubernetes-aks/todo-app-deployment.yaml -f kubernetes-aks/todo-app-service.yaml
+  3. Set FRONTEND_ORIGIN to the exact browser origin and rerun this script to enable Function CORS.
+     Apply kubernetes-aks/todo-app-deployment.yaml and kubernetes-aks/todo-app-service.yaml.
 
 Remove everything when finished:  bash infra/destroy.sh
 EOF

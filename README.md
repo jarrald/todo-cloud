@@ -4,8 +4,9 @@ Clone the repository - for example using VS Code.
 
 ## Environment needed to run React.js and node.js express applications
 
-- **Node.js** (recommended version 18.x or later)
+- **Node.js 22** (for the frontend, API, and Azure Function)
 - **npm** (comes with Node.js)
+- **Azure Functions Core Tools v4** (to run the Function locally)
 - Optionally, a code editor like **VS Code**
 
 To check if Node.js and npm are installed, run:
@@ -17,7 +18,7 @@ npm -v
 
 ## Install the dependencies:
 
-for both todo-app and todo-api folders, run:
+For `todo-app`, `todo-api`, and `todo-functions`, run:
 
 ```bash
 npm install
@@ -35,7 +36,13 @@ In the `todo-app` folder, create a `.env` file with the following content:
 
 ```
 VITE_API_URL=http://localhost:5000
+VITE_STATISTICS_URL=http://localhost:7071
 ```
+
+In `todo-functions`, copy `local.settings.json.example` to `local.settings.json`.
+Set `MONGO_URI` to the **same database** used by `todo-api`. The file is local
+and must not be committed. The example allows the frontend origin
+`http://localhost:3000`; update `Host.CORS` if the frontend uses a different origin.
 
 ## Run the application
 
@@ -50,6 +57,25 @@ In the todo-app folder, run:
 ```bash
 npm run dev
 ```
+
+In the todo-functions folder, run:
+
+```bash
+npm start
+```
+
+The Function serves `GET http://localhost:7071/api/statistics`. It returns
+`total`, `completed`, and `pending` from the `todos` collection; an empty
+collection returns zeros. The frontend refreshes these counts after creating,
+completing, or deleting a todo. If the Function is unavailable, the todo app
+still runs and shows a statistics error.
+
+Run `npm test` in `todo-functions` to test against a temporary MongoDB instance.
+The first test run downloads a MongoDB binary.
+
+**Note:** Starting `todo-api` runs its existing seed script, which deletes and
+replaces todos in the configured database. Do not start it against data you
+need to keep.
 
 ## Running MongoDB Server
 
@@ -66,9 +92,21 @@ run the multi-container setup:
 docker-compose up -d
 ```
 
+Run the Function separately as described above. For the default Compose
+configuration, set its `MONGO_URI` to `mongodb://localhost:27018/todosDB`.
+The browser uses `http://localhost:7071` for the Function by default; override
+`VITE_STATISTICS_URL` when starting Compose if needed.
+
 NOTE: If the api starts before MongoDB is ready, you might need to restart the todo-api container because it won't be able to connect to the database initially.
 
 NOTE: If you don't install the dependencies for the todo-api, the container will not work because it needs some of the devDependencies to run properly but the dockerfile only installs production dependencies.
+
+## Azure deployment
+
+The Function App, its storage, and the shared Cosmos DB connection are included
+in the Azure infrastructure. See [the Azure deployment guide](docs/cicd-aks-acr.md)
+for GitHub OIDC, frontend URL, CORS, and deployment instructions. Azure
+deployment creates billable resources.
 
 ## Local Kubernetes Setup
 
@@ -82,7 +120,7 @@ Run:
 bash kubernetes.deployment.sh
 ```
 
-All the services are port-forwarded to localhost, so we can access them via http://localhost:3000 for the todo-app and http://localhost:5000 for the todo-api. MongoDB is accessible at localhost:27017, for example using MongoDB Compass or any other MongoDB client.
+All the services are port-forwarded to localhost, so we can access them via http://localhost:3000 for the todo-app and http://localhost:5000 for the todo-api. MongoDB is accessible at localhost:27018. Run the Function separately with `MONGO_URI=mongodb://localhost:27018/todosDB`, and use an updated todo-app image containing the statistics component.
 
 NOTE: If the api starts before MongoDB is ready, you might need to restart the todo-api container because it won't be able to connect to the database initially.
 
