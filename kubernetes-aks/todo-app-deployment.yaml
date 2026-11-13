@@ -17,8 +17,3 @@ spec:
           image: todoacrd443z4dn4xi5s.azurecr.io/todo-app:latest # replace YOUR_ACR with the ACR name
           ports:
             - containerPort: 3000
-          env:
-            - name: VITE_API_URL
-              value: "http://131.163.55.93:5000" # public IP of the todo-api LoadBalancer (browser calls the API directly)
-            - name: CHOKIDAR_USEPOLLING
-              value: "true"
