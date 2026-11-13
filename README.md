@@ -2,6 +2,8 @@
 
 Clone the repository - for example using VS Code.
 
+The demo supports local development and deployment to Azure Kubernetes Service (AKS).
+
 ## Environment needed to run React.js and node.js express applications
 
 - **Node.js 22** (for the frontend, API, and Azure Function)
@@ -101,12 +103,11 @@ NOTE: If the api starts before MongoDB is ready, you might need to restart the t
 
 NOTE: If you don't install the dependencies for the todo-api, the container will not work because it needs some of the devDependencies to run properly but the dockerfile only installs production dependencies.
 
-## Azure deployment
+## Azure Kubernetes Service (AKS) deployment
 
-The Function App, its storage, and the shared Cosmos DB connection are included
-in the Azure infrastructure. See [the Azure deployment guide](docs/cicd-aks-acr.md)
-for GitHub OIDC, frontend URL, CORS, and deployment instructions. Azure
-deployment creates billable resources.
+Deploy the frontend and API to AKS alongside an Azure Function App and a shared
+Cosmos DB database. See the [AKS deployment and CI/CD guide](docs/cicd-aks-acr.md)
+for setup and deployment instructions. Azure deployment creates billable resources.
 
 ## Local Kubernetes Setup
 
