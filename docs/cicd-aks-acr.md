@@ -68,60 +68,127 @@ If several subscriptions are listed, choose the student one: `az account set --s
 `kubectl` and Bicep, and you are already logged in. Check that GitHub CLI and Node.js are available, install them
 if needed, run `gh auth login`, then `git clone` the repo and run the scripts.
 
-## Automated setup: deploy and destroy scripts
+## Deploy your own copy
 
-Run the following from the repository root in Bash. Install the tools in **Prerequisites** first. Git is also needed
-to clone the repository and push the manifests and workflows. Docker is not needed locally when using GitHub Actions.
+Follow these steps in a Bash terminal. On Windows, use Git Bash or WSL. Install the tools in
+**Prerequisites** first. Docker is not needed locally: GitHub Actions builds the container images.
+Deployment creates billable Azure resources; review **Rough cost** and clean up when finished.
 
-### 1. Sign in
+### 1. Fork and clone the repository
+
+1. Sign in to GitHub and open <https://github.com/pesekt1/todo-cloud>.
+2. Select **Fork** and create a fork under your own GitHub account. Keep the `main` branch.
+3. Open your fork's **Actions** tab and enable workflows if GitHub prompts you to do so.
+4. Clone your fork, replacing `YOUR-USERNAME` with your GitHub username:
+
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/todo-cloud.git
+   cd todo-cloud
+   git remote -v
+   ```
+
+Check that `origin` points to your fork, not the original repository. If you named your fork differently,
+use its actual clone URL. You need permission to manage its Actions secrets and variables and run workflows.
+
+### 2. Sign in
 
 ```bash
-
-az account show             # check the subscription
-az login                  # sign in to Azure if not already signed in
-kubectl version --client    # check kubectl is installed
-gh auth status       # check GitHub CLI is installed and signed in
-gh auth login               # must have access to manage Actions secrets and variables
+az login
+az account list --output table
+az account set --subscription "<student subscription name or id>"
+az account show --output table
+gh auth login
+gh auth status
+kubectl version --client
 ```
 
-For `gh`, sign in to an account with permission to manage the target repository's Actions secrets and variables
-and trigger workflows. Your Azure account needs permission to create the resources and assign roles.
+Confirm that the selected Azure subscription is the one you intend to use and that `gh` is signed in to the
+GitHub account that owns your fork. Your Azure account needs permission to create resources, register resource
+providers, and assign roles.
 
-### 2. Deploy the demo in bash
+### 3. Check regions and prepare your repository
+
+The defaults are `norwayeast` for AKS and ACR, `uksouth` for Cosmos DB, and the AKS region for the Function
+App and its storage. Your subscription may have different policy restrictions, quotas, or available capacity.
+List Azure regions and regions that support the Function's Flex Consumption plan:
+
+```bash
+az account list-locations --query "[].{Name:name, DisplayName:displayName}" -o table
+az functionapp list-flexconsumption-locations -o table
+```
+
+A region appearing in a list does not guarantee that your subscription permits it or has capacity for every
+resource. Choose suitable regions if the defaults are unavailable; you can supply them in the next step.
+The Function and its storage must use a region that supports Flex Consumption.
+
+From your cloned fork, check your branch and working tree:
+
+```bash
+git status
+git branch --show-current
+git remote -v
+```
+
+Use `main`. If you change application, infrastructure, manifest, or workflow files, commit and push those
+changes to your fork's `main` before deploying. The local commit must match your fork's `main`, and those
+files must have no uncommitted changes. Push-triggered workflows may fail before the infrastructure and
+GitHub settings exist; the deploy script runs them again after configuring everything.
+
+If your local `main` is behind your fork and you have no uncommitted changes, update it:
+
+```bash
+git switch main
+git pull --ff-only origin main
+```
+
+### 4. Deploy the demo
+
+The script reuses the resource group `todo-rg` if it already exists, and cleanup deletes the entire group.
+If that group contains resources you need to keep, choose a new group and include `RG=<group-name>` in your
+deployment command; use the same group name when cleaning up.
+
+From the repository root, use the defaults if they are suitable:
 
 ```bash
 bash infra/deploy.sh
 ```
 
-Before running, commit and push the code to `main`. The local commit must match the target repository's
-`main`, and application, infrastructure, manifest and workflow files must have no uncommitted changes. Set
-`GITHUB_REPO=owner/repo` if the intended GitHub repository is not the current repository.
-Push-triggered workflows may fail before the infrastructure and GitHub settings exist; the script runs them
-again after configuring everything.
+Or replace the following example regions with regions suitable for your subscription:
+
+```bash
+LOCATION=northeurope COSMOS_LOCATION=uksouth FUNCTIONS_LOCATION=uksouth bash infra/deploy.sh
+```
+
+`LOCATION` sets the AKS and ACR region, `COSMOS_LOCATION` sets the Cosmos DB region, and
+`FUNCTIONS_LOCATION` sets the Function App and its storage region. If deployment fails because a region is
+restricted or lacks capacity, choose another region and rerun the command. An existing resource group's
+location does not change, and changing a setting does not move an existing Cosmos DB account. Use a new
+resource group via `RG=<group-name>` if existing resources must remain in their current regions.
+
+The script normally detects your fork from the current repository. If necessary, explicitly select it with
+`GITHUB_REPO=YOUR-USERNAME/todo-cloud bash infra/deploy.sh`, using your fork's actual owner and name.
 
 The script deploys [infra/main.bicep](../infra/main.bicep) (ACR, AKS, Cosmos DB, Function App,
 storage, and the GitHub managed identity), configures the database secret, and renders the registry
 name into the AKS manifests without changing the files. It applies the manifests, waits for public IPs,
 configures Function CORS and GitHub secrets and variables, then triggers and waits for all three workflows.
-Finally it verifies the API, frontend, Function and CORS. It prints the frontend URL when complete.
-Open that URL, then add and complete a todo to verify that the statistics update.
+Finally it verifies the API, frontend, Function and CORS, and prints the frontend URL.
+
+### 5. Verify the demo
+
+Open the printed frontend URL. Add a todo, complete it, and check that the statistics update. In your fork's
+**Actions** tab, check that the Function, API, and frontend workflows succeeded. If deployment or verification
+fails, see **Troubleshooting** below.
+
+When finished, follow **Clean up** below to delete the demo resources and avoid further charges.
 
 The Function reads the same Cosmos database as the API. Its database connection is stored in Azure app
 settings, not in the frontend or GitHub. Do not commit credentials or kubeconfig. The API's existing
 seed script replaces the todos whenever the API starts, including during deployment and restarts.
 
-The default location is `norwayeast` for AKS and ACR, and `uksouth` for Cosmos DB. Available regions may differ for
-each Azure for Students subscription.
-Cosmos DB uses UK South because account creation in Norway East returned a high-demand capacity error. Availability
-can change, so set `COSMOS_LOCATION` to another permitted region if necessary.
-An existing resource group is reused even if its own location differs;
-its location does not change. Use a new `RG` if existing resources need to remain in another region; changing the
-location setting does not move an existing Cosmos DB account.
-Settings can be overridden with environment variables, for example
-`LOCATION=northeurope COSMOS_LOCATION=uksouth AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh`.
-The Function and its storage default to `LOCATION`; use `FUNCTIONS_LOCATION` to select a region
-that supports Flex Consumption. Check available regions with
-`az functionapp list-flexconsumption-locations -o table` and your subscription's restrictions.
+Other settings can also be overridden with environment variables, for example
+`AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh`. Include your region overrides again when rerunning the
+script if you do not want to use the defaults.
 The default AKS node count is two (`AKS_NODE_COUNT=1` overrides it). Existing clusters do not change until you
 redeploy or scale the node pool manually:
 
@@ -224,7 +291,7 @@ If role assignment is denied, ask a subscription administrator for the required 
 New Azure identity and role assignments can take time to propagate; if Function authentication fails
 immediately after provisioning, wait a few minutes and rerun the script.
 
-### 3. Clean up
+### Clean up
 
 ```bash
 bash infra/destroy.sh
