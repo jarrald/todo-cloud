@@ -15,11 +15,11 @@ is created inside the demo resource group and is removed when that group is dele
 
 ### Application architecture
 
-![Application architecture diagram](diagrams/architecture.svg)
+[![Application architecture diagram](diagrams/architecture.svg)](diagrams/todo-cloud-AKS.drawio)
 
 ### Automated deployment
 
-![Automated deployment diagram](diagrams/deployment.svg)
+[![Automated deployment diagram](diagrams/deployment.svg)](diagrams/deployment-workflow.drawio)
 
 ## Rough cost
 
