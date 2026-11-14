@@ -278,6 +278,13 @@ Metrics availability depends on the cluster's metrics APIs and configuration.
 
 ### Troubleshooting
 
+**Interrupted deployment:** You can usually rerun `bash infra/deploy.sh` without deleting the resource group.
+First, wait for any Azure deployment or GitHub workflows still in progress to finish. Use the same subscription
+and any original environment overrides, including `RG` and region settings. The script reapplies the
+configuration and reruns the workflows; it does not resume from the interrupted step. If it fails, check the
+reported error before retrying. Restarting the API can replace existing todos. Use `destroy.sh` only if you
+intend to delete the entire resource group and its data.
+
 If the deployment fails: select a region allowed by your subscription policy, use `ATTACH_ACR=false` if the
 AKS-to-ACR role assignment is denied, and `COSMOS_SERVERLESS=true` when the free tier is already used.
 The Function identity still requires permission to create its separate role assignment.
