@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 param location string = resourceGroup().location
-param cosmosLocation string = 'uksouth'
+param cosmosLocation string = 'swedencentral'
 param functionsLocation string = location
 param prefix string = 'todo'
 param aksVmSize string = 'Standard_B2s'

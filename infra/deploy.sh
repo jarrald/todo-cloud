@@ -4,9 +4,10 @@
 # Requires: az, kubectl, gh, git, curl, Node.js, and authenticated Azure and GitHub CLI sessions.
 # Works on macOS, Linux, Windows (Git Bash / WSL) and Azure Cloud Shell.
 #
-# Optional overrides (environment variables), e.g.  LOCATION=northeurope bash infra/deploy.sh
-#   RG=todo-rg  LOCATION=norwayeast  COSMOS_LOCATION=uksouth  AKS_VM_SIZE=Standard_B2s
-#   FUNCTIONS_LOCATION=norwayeast (must support Flex Consumption)
+# Optional overrides (environment variables), e.g.  LOCATION=italynorth bash infra/deploy.sh
+#   RG=todo-rg  LOCATION=swedencentral  COSMOS_LOCATION=swedencentral  AKS_VM_SIZE=Standard_B2s
+#   FUNCTIONS_LOCATION=swedencentral (must support Flex Consumption)
+#   All three regions must be allowed by any allowed-regions policy on the subscription.
 #   AKS_NODE_COUNT=2  ATTACH_ACR=true
 #   COSMOS_SERVERLESS=true|false (default: auto)  GITHUB_REPO=owner/repo (default: current repo)
 #   FRONTEND_ORIGIN=https://example.com (exact browser origin, no path or trailing slash)
@@ -15,8 +16,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RG="${RG:-todo-rg}"
-LOCATION="${LOCATION:-norwayeast}"
-COSMOS_LOCATION="${COSMOS_LOCATION:-uksouth}"
+LOCATION="${LOCATION:-swedencentral}"
+COSMOS_LOCATION="${COSMOS_LOCATION:-swedencentral}"
 FUNCTIONS_LOCATION="${FUNCTIONS_LOCATION:-$LOCATION}"
 AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s}"
 AKS_NODE_COUNT="${AKS_NODE_COUNT:-2}"
@@ -52,7 +53,7 @@ fi
 echo "Subscription: $(az account show --query name -o tsv)"
 
 echo "Registering resource providers..."
-for provider in Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.DocumentDB Microsoft.Storage Microsoft.Web Microsoft.ManagedIdentity; do
+for provider in Microsoft.Compute Microsoft.Network Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.DocumentDB Microsoft.Storage Microsoft.Web Microsoft.ManagedIdentity; do
   az provider register --namespace "$provider" --wait
 done
 

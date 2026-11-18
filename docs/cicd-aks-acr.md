@@ -108,8 +108,8 @@ providers, and assign roles.
 
 ### 3. Check regions and prepare your repository
 
-The defaults are `norwayeast` for AKS and ACR, `uksouth` for Cosmos DB, and the AKS region for the Function
-App and its storage. Your subscription may have different policy restrictions, quotas, or available capacity.
+The defaults are `swedencentral` for AKS, ACR and Cosmos DB, and the AKS region for the Function App and its
+storage. Your subscription may have different policy restrictions, quotas, or available capacity.
 List Azure regions and regions that support the Function's Flex Consumption plan:
 
 ```bash
@@ -120,6 +120,16 @@ az functionapp list-flexconsumption-locations -o table
 A region appearing in a list does not guarantee that your subscription permits it or has capacity for every
 resource. Choose suitable regions if the defaults are unavailable; you can supply them in the next step.
 The Function and its storage must use a region that supports Flex Consumption.
+
+A subscription-level allowed-regions policy rejects every other region with `RequestDisallowedByAzure`. Show the
+regions this subscription currently permits:
+
+```bash
+az policy assignment show -n sys.regionrestriction --query parameters.listOfAllowedLocations.value -o tsv
+```
+
+Pick a region from that list that also appears in the Flex Consumption list above, and use it for all three
+variables below so the whole stack lives in one permitted region.
 
 From your cloned fork, check your branch and working tree:
 
@@ -156,7 +166,7 @@ bash infra/deploy.sh
 Or replace the following example regions with regions suitable for your subscription:
 
 ```bash
-LOCATION=northeurope COSMOS_LOCATION=uksouth FUNCTIONS_LOCATION=uksouth bash infra/deploy.sh
+LOCATION=italynorth COSMOS_LOCATION=italynorth FUNCTIONS_LOCATION=italynorth bash infra/deploy.sh
 ```
 
 `LOCATION` sets the AKS and ACR region, `COSMOS_LOCATION` sets the Cosmos DB region, and
