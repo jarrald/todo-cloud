@@ -23,7 +23,8 @@ az() {
   case "$1 ${2:-} ${3:-}" in
     "account show "*) case "$query" in name) echo Test ;; tenantId) echo tenant ;; id) echo subscription ;; esac ;;
     "provider register"*) ;;
-    "group exists "*) if [ "${MOCK_EXISTING:-0}" = 1 ]; then echo true; else echo false; fi ;;
+    "group exists "*) if [ "${MOCK_RG_DELETING:-0}" = 1 ] || [ "${MOCK_EXISTING:-0}" = 1 ]; then echo true; else echo false; fi ;;
+    "group show "*) if [ "${MOCK_RG_DELETING:-0}" = 1 ]; then echo Deleting; else echo Succeeded; fi ;;
     "group create "*) ;;
     "deployment group list"*) if [ "${MOCK_EXISTING:-0}" = 1 ]; then echo test-functions; fi ;;
     "deployment group create"*) echo "bicep:$*" >> "$MOCK_LOG" ;;
@@ -183,3 +184,11 @@ export MOCK_COSMOS_ERROR=1
 if output=$(run_deploy 2>&1); then echo "Expected Cosmos lookup failure to stop deployment" >&2; exit 1; fi
 [[ "$output" == *"Cosmos lookup failed"* ]]
 echo "Timeout and preflight failures: passed"
+
+: > "$MOCK_LOG"
+export MOCK_RG_DELETING=1
+if output=$(run_deploy 2>&1); then echo "Expected resource group deletion to stop deployment" >&2; exit 1; fi
+[[ "$output" == *"still being deleted"* ]]
+if grep -q '^bicep:' "$MOCK_LOG"; then echo "Deployment started while the group was being deleted" >&2; exit 1; fi
+unset MOCK_RG_DELETING
+echo "Resource group deletion: passed"

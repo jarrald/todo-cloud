@@ -71,20 +71,38 @@ done
 
 GROUP_EXISTS=$(az group exists -n "$RG" -o tsv)
 if [ "$GROUP_EXISTS" = "true" ]; then
+  GROUP_STATE=$(az group show -n "$RG" --query properties.provisioningState -o tsv)
+  if [ "$GROUP_STATE" = "Deleting" ]; then
+    # destroy.sh deletes in the background, so a group that is still going away blocks a new deployment.
+    echo "Resource group $RG is still being deleted; waiting for it to finish..."
+    rg_elapsed=0
+    while [ "$rg_elapsed" -lt 900 ] && [ "$(az group exists -n "$RG" -o tsv)" = "true" ]; do
+      sleep 15
+      rg_elapsed=$((rg_elapsed + 15))
+    done
+    if [ "$(az group exists -n "$RG" -o tsv)" = "true" ]; then
+      echo "Resource group $RG is still being deleted. Run this script again once deletion completes." >&2
+      exit 1
+    fi
+    GROUP_EXISTS=false
+  fi
+fi
+if [ "$GROUP_EXISTS" = "true" ]; then
   echo "Using existing resource group $RG."
 else
   echo "Creating resource group $RG in $LOCATION..."
   az group create -n "$RG" -l "$LOCATION" -o none
 fi
 
-# Preserve the currently allowed origin while the infrastructure is redeployed.
+# Preserve the currently allowed origin while the infrastructure is redeployed. A deployment record can
+# outlive the resources it created, so a missing Function App must not stop the deployment.
 EXISTING_ORIGIN=""
 if [ "$GROUP_EXISTS" = "true" ]; then
   EXISTING_FUNCTION=$(az deployment group list -g "$RG" \
     --query "[?name=='$DEPLOYMENT'].properties.outputs.functionsName.value | [0]" -o tsv)
   if [ -n "$EXISTING_FUNCTION" ]; then
     EXISTING_ORIGIN=$(az functionapp cors show -g "$RG" -n "$EXISTING_FUNCTION" \
-      --query 'allowedOrigins[0]' -o tsv)
+      --query 'allowedOrigins[0]' -o tsv 2>/dev/null || true)
   fi
 fi
 INITIAL_ORIGIN="${FRONTEND_ORIGIN:-$EXISTING_ORIGIN}"
