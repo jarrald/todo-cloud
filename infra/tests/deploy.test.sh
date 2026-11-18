@@ -78,6 +78,8 @@ gh() {
           *todo-app.yml*) echo "dispatch:app" >> "$MOCK_LOG"; echo 103 ;;
           *) return 1 ;;
         esac
+      elif [[ " $* " == *"owner.id"* ]]; then
+        printf '111\n222\n'
       else
         echo "Unexpected GitHub API command: $*" >&2; return 1
       fi ;;
@@ -126,6 +128,7 @@ grep -q 'apply:.*image: testacr.azurecr.io/todo-app:latest' "$MOCK_LOG"
 grep -q 'dispatch:functions' "$MOCK_LOG"
 grep -q 'dispatch:api' "$MOCK_LOG"
 grep -q 'dispatch:app' "$MOCK_LOG"
+grep -q 'bicep:.*githubSubjectImmutable=repo:example@111/demo@222:ref:refs/heads/main' "$MOCK_LOG"
 echo "Fresh deployment: passed"
 
 : > "$MOCK_LOG"

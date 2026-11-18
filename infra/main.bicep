@@ -11,6 +11,9 @@ param databaseName string = 'todosDB'
 @description('GitHub repository in owner/name form, authorized for the main branch')
 param githubRepo string
 
+@description('GitHub OIDC subject using immutable owner and repository IDs; empty skips that credential')
+param githubSubjectImmutable string = ''
+
 @description('Exact deployed frontend origin, including scheme and port; empty disables cross-origin access')
 param frontendOrigin string = ''
 
@@ -66,6 +69,7 @@ module functions 'modules/functions.bicep' = {
     databaseName: databaseName
     frontendOrigin: frontendOrigin
     githubRepo: githubRepo
+    githubSubjectImmutable: githubSubjectImmutable
   }
 }
 

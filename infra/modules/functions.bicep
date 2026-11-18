@@ -5,6 +5,7 @@ param cosmosName string
 param databaseName string
 param frontendOrigin string
 param githubRepo string
+param githubSubjectImmutable string = ''
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' existing = {
   name: cosmosName
@@ -109,6 +110,19 @@ resource githubFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/fede
     audiences: ['api://AzureADTokenExchange']
     issuer: 'https://token.actions.githubusercontent.com'
     subject: 'repo:${githubRepo}:ref:refs/heads/main'
+  }
+}
+
+// Repositories created after GitHub's immutable-subject change present owner and repository IDs in the OIDC
+// subject, for example repo:owner@123/repo@456:ref:refs/heads/main. Trust that subject as well so login works
+// for either format; only one of the two credentials ever matches.
+resource githubFederationImmutable 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (!empty(githubSubjectImmutable)) {
+  parent: githubIdentity
+  name: 'github-main-immutable'
+  properties: {
+    audiences: ['api://AzureADTokenExchange']
+    issuer: 'https://token.actions.githubusercontent.com'
+    subject: githubSubjectImmutable
   }
 }
 

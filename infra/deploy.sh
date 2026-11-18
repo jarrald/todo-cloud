@@ -37,6 +37,18 @@ if [[ ! "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   exit 1
 fi
 
+# GitHub now includes immutable owner and repository IDs in the OIDC subject presented to Azure, for example
+# repo:owner@123/repo@456:ref:refs/heads/main. The deployment identity must trust that subject as well, so look
+# the IDs up and let the template add a second federated credential for it.
+SUBJECT_IMMUTABLE=""
+if GITHUB_IDS=$(gh api "repos/$REPO" --jq '.owner.id, .id' 2>/dev/null); then
+  OWNER_ID=$(printf '%s\n' "$GITHUB_IDS" | sed -n 1p)
+  REPO_ID=$(printf '%s\n' "$GITHUB_IDS" | sed -n 2p)
+  if [[ "$OWNER_ID" =~ ^[0-9]+$ && "$REPO_ID" =~ ^[0-9]+$ ]]; then
+    SUBJECT_IMMUTABLE="repo:${REPO%%/*}@${OWNER_ID}/${REPO#*/}@${REPO_ID}:ref:refs/heads/main"
+  fi
+fi
+
 LOCAL_COMMIT=$(git rev-parse HEAD)
 REMOTE_COMMIT=$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')
 if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
@@ -99,7 +111,7 @@ if ! az deployment group create -g "$RG" -n "$DEPLOYMENT" -f infra/main.bicep \
   -p location="$LOCATION" cosmosLocation="$COSMOS_LOCATION" functionsLocation="$FUNCTIONS_LOCATION" aksVmSize="$AKS_VM_SIZE" \
      aksNodeCount="$AKS_NODE_COUNT" attachAcr="$ATTACH_ACR" \
      cosmosFreeTier="$COSMOS_FREE" cosmosServerless="$COSMOS_SERVERLESS" \
-     frontendOrigin="$INITIAL_ORIGIN" githubRepo="$REPO" -o none; then
+     frontendOrigin="$INITIAL_ORIGIN" githubRepo="$REPO" githubSubjectImmutable="$SUBJECT_IMMUTABLE" -o none; then
   echo
   echo "Deployment failed. Common fixes:"
   echo "  - AKS-to-ACR role denied:       ATTACH_ACR=false bash infra/deploy.sh"
