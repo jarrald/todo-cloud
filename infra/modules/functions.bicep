@@ -119,6 +119,10 @@ resource githubFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/fede
 resource githubFederationImmutable 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (!empty(githubSubjectImmutable)) {
   parent: githubIdentity
   name: 'github-main-immutable'
+  // Azure rejects concurrent federated identity credential writes under one managed identity, so serialize.
+  dependsOn: [
+    githubFederation
+  ]
   properties: {
     audiences: ['api://AzureADTokenExchange']
     issuer: 'https://token.actions.githubusercontent.com'
