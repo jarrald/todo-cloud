@@ -4,7 +4,7 @@ param location string = resourceGroup().location
 param cosmosLocation string = 'swedencentral'
 param functionsLocation string = location
 param prefix string = 'todo'
-param aksVmSize string = 'Standard_B2s'
+param aksVmSize string = 'Standard_B2s_v2'
 @minValue(1)
 param aksNodeCount int = 2
 param databaseName string = 'todosDB'

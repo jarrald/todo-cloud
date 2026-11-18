@@ -5,7 +5,7 @@
 # Works on macOS, Linux, Windows (Git Bash / WSL) and Azure Cloud Shell.
 #
 # Optional overrides (environment variables), e.g.  LOCATION=italynorth bash infra/deploy.sh
-#   RG=todo-rg  LOCATION=swedencentral  COSMOS_LOCATION=swedencentral  AKS_VM_SIZE=Standard_B2s
+#   RG=todo-rg  LOCATION=swedencentral  COSMOS_LOCATION=swedencentral  AKS_VM_SIZE=Standard_B2s_v2
 #   FUNCTIONS_LOCATION=swedencentral (must support Flex Consumption)
 #   All three regions must be allowed by any allowed-regions policy on the subscription.
 #   AKS_NODE_COUNT=2  ATTACH_ACR=true
@@ -19,7 +19,7 @@ RG="${RG:-todo-rg}"
 LOCATION="${LOCATION:-swedencentral}"
 COSMOS_LOCATION="${COSMOS_LOCATION:-swedencentral}"
 FUNCTIONS_LOCATION="${FUNCTIONS_LOCATION:-$LOCATION}"
-AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s}"
+AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s_v2}"
 AKS_NODE_COUNT="${AKS_NODE_COUNT:-2}"
 ATTACH_ACR="${ATTACH_ACR:-true}"
 FRONTEND_ORIGIN="${FRONTEND_ORIGIN:-}"
@@ -105,7 +105,7 @@ if ! az deployment group create -g "$RG" -n "$DEPLOYMENT" -f infra/main.bicep \
   echo "  - AKS-to-ACR role denied:       ATTACH_ACR=false bash infra/deploy.sh"
   echo "  - Function role denied:         ask an administrator for role-assignment permission"
   echo "  - Region blocked/unavailable:   set LOCATION or COSMOS_LOCATION to an available, allowed region"
-  echo "  - VM size not available:        AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh"
+  echo "  - VM size not available:        AKS_VM_SIZE=Standard_B2s_v2 bash infra/deploy.sh"
   echo "  - Free tier already used:       COSMOS_SERVERLESS=true bash infra/deploy.sh"
   exit 1
 fi

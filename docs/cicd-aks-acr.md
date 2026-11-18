@@ -26,7 +26,7 @@ is created inside the demo resource group and is removed when that group is dele
 | Resource                   | Choice                       | Cost                          |
 | -------------------------- | ---------------------------- | ----------------------------- |
 | AKS control plane          | Free tier                    | $0                            |
-| AKS nodes                  | 2 x `Standard_B2s`           | ~ $60/month if left running   |
+| AKS nodes                  | 2 x `Standard_B2s_v2`        | ~ $60-110/month if left running; size and region dependent |
 | ACR                        | Basic                        | ~ $5/month                    |
 | Cosmos DB for MongoDB (RU) | Free tier (1000 RU/s, 25 GB) | $0                            |
 | Public IPs                 | 2 x LoadBalancer             | ~ a few $/month               |
@@ -197,8 +197,9 @@ settings, not in the frontend or GitHub. Do not commit credentials or kubeconfig
 seed script replaces the todos whenever the API starts, including during deployment and restarts.
 
 Other settings can also be overridden with environment variables, for example
-`AKS_VM_SIZE=Standard_B2ms bash infra/deploy.sh`. Include your region overrides again when rerunning the
-script if you do not want to use the defaults.
+`AKS_VM_SIZE=Standard_B2s_v2 bash infra/deploy.sh`. Include your region overrides again when rerunning the
+script if you do not want to use the defaults. Not every VM size is permitted in every subscription or region:
+if preflight validation rejects the size, it lists the sizes that are allowed.
 The default AKS node count is two (`AKS_NODE_COUNT=1` overrides it). Existing clusters do not change until you
 redeploy or scale the node pool manually:
 
